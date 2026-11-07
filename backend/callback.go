@@ -1,4 +1,4 @@
-package handler
+package backend
 
 import (
 	"bytes"
@@ -17,7 +17,12 @@ type MpesaCallback struct {
 	} `json:"Body"`
 }
 
-func CallbackHandler(w http.ResponseWriter, r *http.Request) {
+func HandleCallback(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
 	var cb MpesaCallback
 	if err := json.NewDecoder(r.Body).Decode(&cb); err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -28,14 +33,15 @@ func CallbackHandler(w http.ResponseWriter, r *http.Request) {
 		refData := cb.Body.StkCallback.AccountReference
 		parts := strings.Split(refData, "|")
 		
-		// Ensure all packed segments are preserved (MAC, RouterIP, Duration)
 		if len(parts) == 3 {
 			macAddress := parts[0]
 			routerIp := parts[1]
 			durationMinutes := parts[2]
 
-			// Send authorization instructions along with the session timeout to the local controller node
 			secretKey := os.Getenv("LOCAL_CONTROLLER_SECRET")
+			if secretKey == "" {
+				secretKey = "dKadWiF6iF5LRQiRBTiSefVwrOZwKw1MojQsWvuwi4q8iym3URREM7U4MiC8ulYw"
+			}
 			
 			unlockPayload := map[string]interface{}{
 				"macAddress":      macAddress,
@@ -45,10 +51,11 @@ func CallbackHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			pBytes, _ := json.Marshal(unlockPayload)
 			
-			// Fire down to the local network edge point
+			// Fire down to the local network controller edge point
 			http.Post("https://ngrok-free.app", "application/json", bytes.NewBuffer(pBytes))
 		}
 	}
 
 	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"Result":"Success"}`))
 }
