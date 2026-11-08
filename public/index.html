@@ -12,7 +12,7 @@
         This script loads SYNCHRONOUSLY and can be cached/failed over,
         but a captive portal shown BEFORE internet access will not fetch it.
     -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://tailwindcss.com"></script>
     <script>
         // Extend theme so custom shades used below are valid.
         tailwind.config = {
@@ -114,11 +114,10 @@
 
     <script>
         // ---- Read incoming variables from OpenWrt redirect engine ----
-        // NOTE: values come from the URL, treat as untrusted. We only render
-        // them via textContent (never innerHTML) to avoid injection.
+        // Overridden parameters to directly bind to default Nodogsplash query strings
         const urlParams = new URLSearchParams(window.location.search);
-        const clientMac = (urlParams.get('mac') || '00:00:00:00:00:00').toUpperCase();
-        const routerIp  = urlParams.get('router_ip') || '192.168.1.1';
+        const clientMac = (urlParams.get('clientmac') || '00:00:00:00:00:00').toUpperCase();
+        const routerIp  = urlParams.get('gatewayip') || '192.168.1.1';
 
         document.getElementById('dev-mac').textContent = `MAC: ${clientMac}`;
         document.getElementById('dev-ip').textContent  = `Router IP: ${routerIp}`;
@@ -206,23 +205,5 @@
             }
         }
     </script>
-
-    <!--
-        PRODUCTION NOTE (captive portal on OpenWrt):
-        The Play CDN above requires internet access to work, but a captive
-        portal is often shown BEFORE the client has internet. For production:
-
-          1. Install Tailwind locally:  npm i -D tailwindcss
-          2. Create tailwind.config.js with the slate 750/850 extension used here.
-          3. Run:  npx tailwindcss -i input.css -o portal.css --minify
-             (input.css just needs the three @tailwind directives.)
-          4. Replace the <script src="cdn.tailwindcss.com"> block with
-             <link rel="stylesheet" href="/portal.css">
-          5. Serve portal.css from the router's local web root.
-
-        This removes the CDN dependency entirely, drastically reduces
-        page weight, and guarantees styling even when the client is
-        still behind the captive portal wall.
-    -->
 </body>
 </html>
