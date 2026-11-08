@@ -57,6 +57,7 @@ func HandleRegister(w http.ResponseWriter, r *http.Request) {
 	consumerSecret := os.Getenv("MPESA_CONSUMER_SECRET")
 	authURL := os.Getenv("MPESA_AUTH_URL")
 	stkPushURL := os.Getenv("MPESA_STK_PUSH_URL")
+	callbackURL := os.Getenv("MPESA_CALLBACK_URL")
 
 	// Fallbacks matching your development credentials if local environment is missing variables
 	if consumerKey == "" {
@@ -64,6 +65,9 @@ func HandleRegister(w http.ResponseWriter, r *http.Request) {
 		consumerSecret = "3nrbJhDxP9Gvw0BXvteqHJBYBBVfryCrJXN3oHljGwgXF3pOmAAJKaVf1NEwC8St"
 		authURL = "https://safaricom.co.ke"
 		stkPushURL = "https://safaricom.co.ke"
+	}
+	if callbackURL == "" {
+		callbackURL = "https://captive-portal-ochre.vercel.app/api/callback"
 	}
 
 	// 1. Generate M-Pesa Access Token
@@ -111,7 +115,7 @@ func HandleRegister(w http.ResponseWriter, r *http.Request) {
 		"PartyA":            formattedPhone,
 		"PartyB":            shortcode,
 		"PhoneNumber":       formattedPhone,
-		"CallBackURL":       "https://vercel.app", // Target dynamic hook gateway
+		"CallBackURL":       callbackURL, // Target dynamic hook gateway
 		"AccountReference":  accountRef,
 		"TransactionDesc":   "WiFi Premium High Speed Access Token",
 	}

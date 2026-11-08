@@ -1,10 +1,8 @@
 package backend
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
-	"os"
 	"strings"
 )
 
@@ -32,27 +30,17 @@ func HandleCallback(w http.ResponseWriter, r *http.Request) {
 	if cb.Body.StkCallback.ResultCode == 0 {
 		refData := cb.Body.StkCallback.AccountReference
 		parts := strings.Split(refData, "|")
-		
+
 		if len(parts) == 3 {
 			macAddress := parts[0]
-			routerIp := parts[1]
-			durationMinutes := parts[2]
+			// routerIp and durationMinutes are carried through the reference but
+			// the router enforces expiry locally, so we only need to queue the MAC.
+			_ = parts[1]
+			_ = parts[2]
 
-			secretKey := os.Getenv("LOCAL_CONTROLLER_SECRET")
-			if secretKey == "" {
-				secretKey = "dKadWiF6iF5LRQiRBTiSefVwrOZwKw1MojQsWvuwi4q8iym3URREM7U4MiC8ulYw"
-			}
-			
-			unlockPayload := map[string]interface{}{
-				"macAddress":      macAddress,
-				"routerIp":        routerIp,
-				"durationMinutes": durationMinutes,
-				"secret":          secretKey,
-			}
-			pBytes, _ := json.Marshal(unlockPayload)
-			
-			// Fire down to the local network controller edge point
-			http.Post("https://ngrok-free.app", "application/json", bytes.NewBuffer(pBytes))
+			// Persist the paid MAC into the cloud queue instead of pushing directly
+			// to a local controller. The router polls /api/check to fetch it.
+			AddPaidDevice(macAddress)
 		}
 	}
 
