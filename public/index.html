@@ -4,12 +4,35 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Connect to High-Speed WiFi</title>
-    <script src="https://tailwindcss.com"></script>
+
+    <!--
+        Play CDN: fine for development / quick testing.
+        For production on a router, pre-build Tailwind with the CLI and
+        serve a local .css file instead (see note at bottom of file).
+        This script loads SYNCHRONOUSLY and can be cached/failed over,
+        but a captive portal shown BEFORE internet access will not fetch it.
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // Extend theme so custom shades used below are valid.
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            750: '#334155', // between 700 and 800
+                            850: '#1e293b', // between 800 and 900
+                        }
+                    }
+                }
+            }
+        };
+    </script>
 </head>
 <body class="bg-slate-900 text-white font-sans min-h-screen flex flex-col items-center py-6 px-4">
 
     <!-- Header / Instructions -->
-    <div class="w-full max-w-md bg-slate-850 border border-emerald-500/30 rounded-xl p-5 mb-6 text-center shadow-lg bg-slate-800">
+    <div class="w-full max-w-md bg-slate-850 border border-emerald-500/30 rounded-xl p-5 mb-6 text-center shadow-lg">
         <h1 class="text-2xl font-bold text-emerald-400 mb-2">⚡ Premium 12Mbps WiFi</h1>
         <div class="text-left text-sm space-y-1 text-slate-300">
             <p>1. Select your preferred high-speed internet package.</p>
@@ -21,9 +44,11 @@
 
     <!-- Phone Number Input -->
     <div class="w-full max-w-md mb-6">
-        <label class="block text-sm font-medium text-slate-400 mb-2">M-Pesa Phone Number</label>
-        <input type="tel" id="phone" placeholder="e.g., 0712345678 or 2547..." 
-            class="w-full px-4 py-3 rounded-lg bg-slate-800 border border-slate-700 text-white focus:outline-none focus:border-emerald-500 font-mono text-lg">
+        <label for="phone" class="block text-sm font-medium text-slate-400 mb-2">M-Pesa Phone Number</label>
+        <input type="tel" id="phone" inputmode="numeric" autocomplete="tel"
+            placeholder="e.g., 0712345678 or 2547..."
+            class="w-full px-4 py-3 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono text-lg">
+        <p id="phone-error" class="hidden text-red-400 text-xs mt-2"></p>
     </div>
 
     <!-- Pricing Options Grid -->
@@ -37,7 +62,10 @@
             </div>
             <div class="text-right">
                 <p class="text-2xl font-black text-white font-mono">Ksh 10</p>
-                <button onclick="pay(10)" class="mt-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold px-5 py-2 rounded-lg text-sm transition shadow-md">Buy Now</button>
+                <button onclick="pay(10, this)" data-amount="10"
+                    class="mt-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold px-5 py-2 rounded-lg text-sm transition shadow-md">
+                    Buy Now
+                </button>
             </div>
         </div>
 
@@ -51,7 +79,10 @@
             </div>
             <div class="text-right">
                 <p class="text-2xl font-black text-white font-mono">Ksh 20</p>
-                <button onclick="pay(20)" class="mt-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold px-5 py-2 rounded-lg text-sm transition shadow-md">Buy Now</button>
+                <button onclick="pay(20, this)" data-amount="20"
+                    class="mt-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold px-5 py-2 rounded-lg text-sm transition shadow-md">
+                    Buy Now
+                </button>
             </div>
         </div>
 
@@ -64,10 +95,16 @@
             </div>
             <div class="text-right">
                 <p class="text-2xl font-black text-white font-mono">Ksh 50</p>
-                <button onclick="pay(50)" class="mt-2 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-bold px-5 py-2 rounded-lg text-sm transition shadow-md">Buy Now</button>
+                <button onclick="pay(50, this)" data-amount="50"
+                    class="mt-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold px-5 py-2 rounded-lg text-sm transition shadow-md">
+                    Buy Now
+                </button>
             </div>
         </div>
     </div>
+
+    <!-- Status / Feedback Area (replaces alerts) -->
+    <div id="status" class="hidden w-full max-w-md mt-4 rounded-lg px-4 py-3 text-sm"></div>
 
     <!-- Footer Diagnostics -->
     <div class="mt-8 text-center text-xs text-slate-500 space-y-1">
@@ -76,31 +113,116 @@
     </div>
 
     <script>
-        // Parse incoming variables appended by the OpenWrt redirection engine
+        // ---- Read incoming variables from OpenWrt redirect engine ----
+        // NOTE: values come from the URL, treat as untrusted. We only render
+        // them via textContent (never innerHTML) to avoid injection.
         const urlParams = new URLSearchParams(window.location.search);
-        const clientMac = urlParams.get('mac') || '00:00:00:00:00:00';
-        const routerIp = urlParams.get('router_ip') || '192.168.1.1';
+        const clientMac = (urlParams.get('mac') || '00:00:00:00:00:00').toUpperCase();
+        const routerIp  = urlParams.get('router_ip') || '192.168.1.1';
 
-        document.getElementById('dev-mac').innerText = `MAC: ${clientMac.toUpperCase()}`;
-        document.getElementById('dev-ip').innerText = `Router IP: ${routerIp}`;
+        document.getElementById('dev-mac').textContent = `MAC: ${clientMac}`;
+        document.getElementById('dev-ip').textContent  = `Router IP: ${routerIp}`;
 
-        async function pay(amount) {
-            const phone = document.getElementById('phone').value.trim();
-            if(!phone) return alert('Please enter your phone number first.');
+        // ---- Helpers ----
+        const phoneInput = document.getElementById('phone');
+        const phoneError = document.getElementById('phone-error');
+        const statusBox  = document.getElementById('status');
+
+        function showStatus(msg, type = 'error') {
+            statusBox.textContent = msg;
+            statusBox.className =
+                'w-full max-w-md mt-4 rounded-lg px-4 py-3 text-sm ' +
+                (type === 'error'
+                    ? 'bg-red-500/15 border border-red-500/40 text-red-300'
+                    : 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300');
+            statusBox.classList.remove('hidden');
+        }
+
+        function clearStatus() {
+            statusBox.classList.add('hidden');
+            statusBox.textContent = '';
+        }
+
+        // ---- Phone validation (Kenyan mobile, M-Pesa friendly) ----
+        // Accepts: 07XXXXXXXX, 01XXXXXXXX, 2547XXXXXXXX, 2541XXXXXXXX, +2547...
+        function normalizePhone(raw) {
+            const digits = raw.replace(/[^\d]/g, '');
+            if (/^0[17]\d{8}$/.test(digits))            return '254' + digits.slice(1);
+            if (/^254[17]\d{8}$/.test(digits))          return digits;
+            if (/^[17]\d{8}$/.test(digits))             return '254' + digits;
+            return null;
+        }
+
+        phoneInput.addEventListener('input', () => {
+            phoneError.classList.add('hidden');
+            clearStatus();
+        });
+
+        // ---- Payment ----
+        async function pay(amount, btn) {
+            clearStatus();
+
+            const normalized = normalizePhone(phoneInput.value.trim());
+            if (!normalized) {
+                phoneError.textContent = 'Enter a valid Safaricom number (e.g. 0712345678).';
+                phoneError.classList.remove('hidden');
+                phoneInput.focus();
+                return;
+            }
+
+            // Disable all buy buttons while a request is in flight
+            // to prevent double STK pushes / double charges.
+            const allButtons = document.querySelectorAll('button[data-amount]');
+            const originalLabel = btn.textContent;
+            allButtons.forEach(b => b.disabled = true);
+            btn.textContent = 'Sending…';
 
             try {
                 const res = await fetch('/api/register', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ phone, amount, mac: clientMac, router_ip: routerIp })
+                    body: JSON.stringify({
+                        phone: normalized,
+                        amount,
+                        mac: clientMac,
+                        router_ip: routerIp
+                    })
                 });
-                const data = await res.json();
-                if(data.error) alert(data.error);
-                else alert('STK Push sent! Enter your PIN to gain access.');
-            } catch(e) {
-                alert('Connection error occurred.');
+
+                // Non-JSON responses (e.g. HTML error pages) shouldn't crash us.
+                let data = null;
+                try { data = await res.json(); } catch (_) { /* ignore */ }
+
+                if (!res.ok || (data && data.error)) {
+                    showStatus((data && data.error) || `Request failed (HTTP ${res.status}). Please try again.`, 'error');
+                } else {
+                    showStatus('STK Push sent! Enter your M-Pesa PIN to gain access.', 'success');
+                }
+            } catch (e) {
+                showStatus('Connection error. Check your network and try again.', 'error');
+            } finally {
+                allButtons.forEach(b => b.disabled = false);
+                btn.textContent = originalLabel;
             }
         }
     </script>
+
+    <!--
+        PRODUCTION NOTE (captive portal on OpenWrt):
+        The Play CDN above requires internet access to work, but a captive
+        portal is often shown BEFORE the client has internet. For production:
+
+          1. Install Tailwind locally:  npm i -D tailwindcss
+          2. Create tailwind.config.js with the slate 750/850 extension used here.
+          3. Run:  npx tailwindcss -i input.css -o portal.css --minify
+             (input.css just needs the three @tailwind directives.)
+          4. Replace the <script src="cdn.tailwindcss.com"> block with
+             <link rel="stylesheet" href="/portal.css">
+          5. Serve portal.css from the router's local web root.
+
+        This removes the CDN dependency entirely, drastically reduces
+        page weight, and guarantees styling even when the client is
+        still behind the captive portal wall.
+    -->
 </body>
 </html>
