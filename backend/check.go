@@ -9,15 +9,17 @@ import (
 func HandleCheck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
+	// Validate Router Token
 	secret := os.Getenv("LOCAL_CONTROLLER_SECRET")
 	if secret == "" {
-		secret = "dKadWiF6iF5LRQiRBTiSefVwrOZwKw1MojQsWvuwi4q8iym3URREM7U4MiC8ulYw" // FIXED: Matches shell
+		secret = "dKadWiF6iF5LRQiRBTiSefVwrOZwKw1MojQsWvuwi4q8iym3URREM7U4MiC8ulYw" 
 	}
 	if r.Header.Get("X-Router-Token") != secret {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
 
+	// Only fetch, do not clear
 	devices := GetPaidDevices()
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"unlock": devices,

@@ -8,8 +8,6 @@ import (
 )
 
 func Handler(w http.ResponseWriter, r *http.Request) {
-	// Vercel rewrites /api/<route> to /api/index?route=<route>, so prefer the
-	// query parameter; fall back to the request path for direct invocations.
 	route := r.URL.Query().Get("route")
 	if route == "" {
 		route = r.URL.Path
@@ -25,6 +23,10 @@ func Handler(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasSuffix(route, "check") {
 		backend.HandleCheck(w, r)
+		return
+	}
+	if strings.HasSuffix(route, "ack") { // <-- NEW ROUTE
+		backend.HandleAck(w, r)
 		return
 	}
 	http.NotFound(w, r)

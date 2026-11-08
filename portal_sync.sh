@@ -1,32 +1,59 @@
 #!/bin/sh
 TOKEN="dKadWiF6iF5LRQiRBTiSefVwrOZwKw1MojQsWvuwi4q8iym3URREM7U4MiC8ulYw"
-API_URL="https://captive-portal-ochre.vercel.app/api/check"
+API_URL="https://captive-portal-ochre.vercel.app/api"
 
-RESPONSE=$(wget --no-check-certificate --header="X-Router-Token: $TOKEN" -qO- "$API_URL" 2>/dev/null)
+# 1. Fetch pending devices
+RESPONSE=$(wget --no-check-certificate --header="X-Router-Token: $TOKEN" -qO- "$API_URL/check" 2>/dev/null)
 
-# Ensure response is not empty
-if [ -z "$RESPONSE" ]; then
-    exit 0
+# Exit if response is empty or the queue is empty
+if [ -z "$RESPONSE" ] || [ "$RESPONSE" = '{"unlock":[]}' ] || [ "$RESPONSE" = '{"unlock":null}' ]; then 
+    exit 0 
 fi
 
-# Loop through the authorized addresses (JSON objects)
-# Using jsonfilter to extract each object's MAC and duration
-echo "$RESPONSE" | jsonfilter -e '@.unlock[*]' | while read -r DEVICE; do
-    MAC=$(echo "$DEVICE" | jsonfilter -e '@.mac')
-    DURATION=$(echo "$DEVICE" | jsonfilter -e '@.duration')
+ACK_MACS=""
+INDEX=0
+
+# 2. Loop through the array using jsonfilter by index
+while true; do
+    MAC=$(echo "$RESPONSE" | jsonfilter -e "@.unlock[$INDEX].mac")
+    DURATION=$(echo "$RESPONSE" | jsonfilter -e "@.unlock[$INDEX].duration")
+
+    # Break out of loop when no more elements are found
+    if [ -z "$MAC" ]; then
+        break
+    fi
+
+    if [ -z "$DURATION" ]; then 
+        DURATION=60
+    fi
     
-    # Default to 60 minutes if duration is missing (safety)
-    if [ -z "$DURATION" ]; then DURATION=60; fi
-    
-    # Convert minutes to seconds for sleep
     SLEEP_SECONDS=$((DURATION * 60))
 
+    # Check if rule already exists
     iptables -C forwarding_rule -m mac --mac-source "$MAC" -j ACCEPT 2>/dev/null
     if [ $? -ne 0 ]; then
         echo "[+] Whitelisting Subscriber MAC: $MAC for $DURATION minutes"
         iptables -I forwarding_rule 1 -m mac --mac-source "$MAC" -j ACCEPT
 
-        # Schedule a background self-destruct with the CORRECT duration
+        # Schedule async expiration
         (sleep $SLEEP_SECONDS && iptables -D forwarding_rule -m mac --mac-source "$MAC" -j ACCEPT) &
     fi
+
+    # Build the ACK string (e.g. "AA:BB:CC,DD:EE:FF")
+    if [ -z "$ACK_MACS" ]; then 
+        ACK_MACS="\"$MAC\""
+    else 
+        ACK_MACS="$ACK_MACS,\"$MAC\""
+    fi
+    
+    INDEX=$((INDEX + 1))
 done
+
+# 3. Explicitly ACK these items back to Vercel to wipe them from Redis safely
+if [ ! -z "$ACK_MACS" ]; then
+    wget --no-check-certificate \
+         --header="X-Router-Token: $TOKEN" \
+         --header="Content-Type: application/json" \
+         --post-data="{\"macs\":[$ACK_MACS]}" \
+         -qO- "$API_URL/ack" >/dev/null 2>&1
+fi
