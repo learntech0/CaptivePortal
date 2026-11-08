@@ -1,6 +1,6 @@
 #!/bin/sh
 TOKEN="dKadWiF6iF5LRQiRBTiSefVwrOZwKw1MojQsWvuwi4q8iym3URREM7U4MiC8ulYw"
-API_URL="https://captive-portal-ochre.vercel.app/api"
+API_URL="https://vercel.app"
 
 # 1. Fetch pending devices
 RESPONSE=$(wget --no-check-certificate --header="X-Router-Token: $TOKEN" -qO- "$API_URL/check" 2>/dev/null)
@@ -29,14 +29,15 @@ while true; do
     
     SLEEP_SECONDS=$((DURATION * 60))
 
-    # Check if rule already exists
-    iptables -C forwarding_rule -m mac --mac-source "$MAC" -j ACCEPT 2>/dev/null
+    # FIXED: Check if rule already exists inside captive_filter instead of forwarding_rule
+    iptables -C captive_filter -m mac --mac-source "$MAC" -j ACCEPT 2>/dev/null
     if [ $? -ne 0 ]; then
         echo "[+] Whitelisting Subscriber MAC: $MAC for $DURATION minutes"
-        iptables -I forwarding_rule 1 -m mac --mac-source "$MAC" -j ACCEPT
+        # FIXED: Insert rule at position 1 of captive_filter so it evaluates before the global DROP
+        iptables -I captive_filter 1 -m mac --mac-source "$MAC" -j ACCEPT
 
-        # Schedule async expiration
-        (sleep $SLEEP_SECONDS && iptables -D forwarding_rule -m mac --mac-source "$MAC" -j ACCEPT) &
+        # FIXED: Schedule async expiration to delete from captive_filter when time runs out
+        (sleep $SLEEP_SECONDS && iptables -D captive_filter -m mac --mac-source "$MAC" -j ACCEPT) &
     fi
 
     # Build the ACK string (e.g. "AA:BB:CC,DD:EE:FF")
