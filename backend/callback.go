@@ -4,13 +4,15 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type MpesaCallback struct {
 	Body struct {
 		StkCallback struct {
-			ResultCode       int    `json:"ResultCode"`
-			AccountReference string `json:"AccountReference"`
+			ResultCode        int    `json:"ResultCode"`
+			CheckoutRequestID string `json:"CheckoutRequestID"`
+			AccountReference  string `json:"AccountReference"`
 		} `json:"stkCallback"`
 	} `json:"Body"`
 }
@@ -27,23 +29,27 @@ func HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Safaricom requires a 200 OK immediately to stop retries.
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"Result":"Success"}`))
+
 	if cb.Body.StkCallback.ResultCode == 0 {
 		refData := cb.Body.StkCallback.AccountReference
 		parts := strings.Split(refData, "|")
-
 		if len(parts) == 3 {
 			macAddress := parts[0]
-			// routerIp and durationMinutes are carried through the reference but
-			// the router enforces expiry locally, so we only need to queue the MAC.
-			_ = parts[1]
-			_ = parts[2]
+			durationMinutes := parts[2]
 
-			// Persist the paid MAC into the cloud queue instead of pushing directly
-			// to a local controller. The router polls /api/check to fetch it.
-			AddPaidDevice(macAddress)
+			// Idempotency check: If this CheckoutRequestID was already processed, skip.
+			InitRedis()
+			key := "processed:" + cb.Body.StkCallback.CheckoutRequestID
+			wasSet, _ := rdb.SetNX(ctx, key, "1", 24*time.Hour).Result()
+			if !wasSet {
+				// Already processed this callback, do nothing.
+				return
+			}
+
+			AddPaidDevice(macAddress, durationMinutes)
 		}
 	}
-
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"Result":"Success"}`))
 }

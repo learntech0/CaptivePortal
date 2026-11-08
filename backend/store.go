@@ -1,33 +1,67 @@
 package backend
 
-import "sync"
+import (
+	"context"
+	"os"
+	"time"
 
-// paidDevices holds MAC addresses that have successfully paid but have not yet
-// been fetched/cleared by the router's polling loop.
-var (
-	paidMu      sync.Mutex
-	paidDevices = make(map[string]bool)
+	"github.com/redis/go-redis/v9"
 )
 
-// AddPaidDevice records a MAC address as paid and pending router clearance.
-func AddPaidDevice(mac string) {
-	paidMu.Lock()
-	defer paidMu.Unlock()
-	paidDevices[mac] = true
+var ctx = context.Background()
+var rdb *redis.Client
+
+// InitRedis is called once at startup (or lazily) to connect to Upstash
+func InitRedis() {
+	if rdb != nil {
+		return
+	}
+	
+	// Upstash provides REDIS_URL (rediss://...) or REST credentials.
+	// For go-redis, we need the standard Redis URL or host:port.
+	redisURL := os.Getenv("UPSTASH_REDIS_URL") // or REDIS_URL
+	if redisURL == "" {
+		// Fallback for local testing (requires a local Redis or Docker)
+		redisURL = "localhost:6379"
+	}
+
+	opt, err := redis.ParseURL(redisURL)
+	if err != nil {
+		panic("Invalid Redis URL: " + err.Error())
+	}
+	rdb = redis.NewClient(opt)
 }
 
-// GetPaidDevices returns (and clears) the list of paid MAC addresses that the
-// router has not yet processed. Clearing after fetch prevents the router from
-// re-processing the same addresses on every poll.
-func GetPaidDevices() []string {
-	paidMu.Lock()
-	defer paidMu.Unlock()
+// AddPaidDevice stores the MAC and its duration in Redis, and adds it to the queue.
+func AddPaidDevice(mac string, durationMinutes string) {
+	InitRedis()
+	// Store the duration for this MAC (expires from Redis after 24h to keep it clean)
+	rdb.Set(ctx, "duration:"+mac, durationMinutes, 24*time.Hour)
+	// Add to the pending queue set
+	rdb.SAdd(ctx, "pending_queue", mac)
+}
 
-	out := make([]string, 0, len(paidDevices))
-	for mac := range paidDevices {
-		out = append(out, mac)
+// GetPaidDevices retrieves all pending MACs and their durations, then removes them from the queue.
+// It returns a slice of structs for easy JSON serialization.
+type PaidDevice struct {
+	Mac      string `json:"mac"`
+	Duration string `json:"duration"`
+}
+
+func GetPaidDevices() []PaidDevice {
+	InitRedis()
+	// Get all members of the set
+	macs, err := rdb.SMembers(ctx, "pending_queue").Result()
+	if err != nil || len(macs) == 0 {
+		return []PaidDevice{}
 	}
-	// Reset the pending queue once the router has fetched it.
-	paidDevices = make(map[string]bool)
+
+	out := make([]PaidDevice, 0, len(macs))
+	for _, mac := range macs {
+		dur, _ := rdb.Get(ctx, "duration:"+mac).Result()
+		out = append(out, PaidDevice{Mac: mac, Duration: dur})
+		// Remove from queue after processing (or you can keep it and let the router ACK)
+		rdb.SRem(ctx, "pending_queue", mac)
+	}
 	return out
 }
