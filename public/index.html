@@ -117,6 +117,13 @@
         // Overridden parameters to directly bind to default Nodogsplash query strings
         const urlParams = new URLSearchParams(window.location.search);
         const clientMac = (urlParams.get('clientmac') || '00:00:00:00:00:00').toUpperCase();
+        if (clientMac === '00:00:00:00:00:00') {
+            document.querySelectorAll('button[data-amount]').forEach(b => {
+                b.disabled = true;
+                b.textContent = 'Reconnect WiFi';
+            });
+            showStatus('Could not detect your device MAC. Please reconnect to WiFi and try again.', 'error');
+        }
         const routerIp  = urlParams.get('gatewayip') || '192.168.1.1';
 
         document.getElementById('dev-mac').textContent = `MAC: ${clientMac}`;

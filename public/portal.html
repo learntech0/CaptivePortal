@@ -1,0 +1,180 @@
+cat << 'HTMLEOF' > /www/portal.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect to High-Speed WiFi</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body class="bg-slate-900 text-white font-sans min-h-screen flex flex-col items-center py-6 px-4">
+
+    <div class="w-full max-w-md bg-slate-850 border border-emerald-500/30 rounded-xl p-5 mb-6 text-center shadow-lg">
+        <h1 class="text-2xl font-bold text-emerald-400 mb-2">⚡ Premium 12Mbps WiFi</h1>
+        <div class="text-left text-sm space-y-1 text-slate-300">
+            <p>1. Select your preferred high-speed internet package.</p>
+            <p>2. Enter your Safaricom M-Pesa phone number.</p>
+            <p>3. Enter your M-Pesa PIN on the prompt sent to your phone.</p>
+            <p>4. Wait 30 seconds to be connected automatically.</p>
+        </div>
+    </div>
+
+    <div class="w-full max-w-md mb-6">
+        <label for="phone" class="block text-sm font-medium text-slate-400 mb-2">M-Pesa Phone Number</label>
+        <input type="tel" id="phone" inputmode="numeric" autocomplete="tel"
+            placeholder="e.g., 0712345678 or 2547..."
+            class="w-full px-4 py-3 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono text-lg">
+        <p id="phone-error" class="hidden text-red-400 text-xs mt-2"></p>
+    </div>
+
+    <div class="w-full max-w-md space-y-4">
+        <div class="bg-slate-800 border border-slate-750 rounded-xl p-5 flex justify-between items-center shadow-md">
+            <div>
+                <span class="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-1 rounded font-bold uppercase">Short Burst</span>
+                <h3 class="text-xl font-bold mt-1">1 HOUR</h3>
+                <p class="text-xs text-slate-400">Valid for 60 Mins • Stable 12Mbps</p>
+            </div>
+            <div class="text-right">
+                <p class="text-2xl font-black text-white font-mono">Ksh 10</p>
+                <button onclick="pay(10, this)" data-amount="10"
+                    class="mt-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold px-5 py-2 rounded-lg text-sm transition shadow-md">
+                    Buy Now
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-slate-800 border border-emerald-500/50 rounded-xl p-5 flex justify-between items-center shadow-md relative overflow-hidden">
+            <div class="absolute top-0 right-0 bg-emerald-500 text-slate-900 text-[10px] font-extrabold px-3 py-0.5 rounded-bl uppercase tracking-wider">Most Popular</div>
+            <div>
+                <span class="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-1 rounded font-bold uppercase">Half Day</span>
+                <h3 class="text-xl font-bold mt-1">3 HOURS</h3>
+                <p class="text-xs text-slate-400">Valid for 3 Hours • Stable 12Mbps</p>
+            </div>
+            <div class="text-right">
+                <p class="text-2xl font-black text-white font-mono">Ksh 20</p>
+                <button onclick="pay(20, this)" data-amount="20"
+                    class="mt-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold px-5 py-2 rounded-lg text-sm transition shadow-md">
+                    Buy Now
+                </button>
+            </div>
+        </div>
+
+        <div class="bg-slate-800 border border-slate-750 rounded-xl p-5 flex justify-between items-center shadow-md">
+            <div>
+                <span class="bg-emerald-500/20 text-emerald-400 text-xs px-2 py-1 rounded font-bold uppercase">Unlimited Day</span>
+                <h3 class="text-xl font-bold mt-1">24 HOURS</h3>
+                <p class="text-xs text-slate-400">Valid for 1 Day • Stable 12Mbps</p>
+            </div>
+            <div class="text-right">
+                <p class="text-2xl font-black text-white font-mono">Ksh 50</p>
+                <button onclick="pay(50, this)" data-amount="50"
+                    class="mt-2 bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold px-5 py-2 rounded-lg text-sm transition shadow-md">
+                    Buy Now
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="status" class="hidden w-full max-w-md mt-4 rounded-lg px-4 py-3 text-sm"></div>
+
+    <div class="mt-8 text-center text-xs text-slate-500 space-y-1">
+        <p id="dev-mac">MAC: Fetching...</p>
+        <p id="dev-ip">Router IP: 192.168.0.1</p>
+    </div>
+
+    <script>
+    (async function () {
+        const BACKEND = 'https://captive-portal-ochre.vercel.app/api/register';
+        const routerIp = '192.168.0.1';
+
+        let clientMac = '00:00:00:00:00:00';
+        try {
+            const who = await fetch('/cgi-bin/whoami', { cache: 'no-store' }).then(r => r.json());
+            if (who && who.mac) clientMac = who.mac.toUpperCase();
+        } catch (_) { /* fallback below */ }
+
+        document.getElementById('dev-mac').textContent = `MAC: ${clientMac}`;
+
+        const phoneInput = document.getElementById('phone');
+        const phoneError = document.getElementById('phone-error');
+        const statusBox  = document.getElementById('status');
+
+        function showStatus(msg, type = 'error') {
+            statusBox.textContent = msg;
+            statusBox.className =
+                'w-full max-w-md mt-4 rounded-lg px-4 py-3 text-sm ' +
+                (type === 'error'
+                    ? 'bg-red-500/15 border border-red-500/40 text-red-300'
+                    : 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300');
+            statusBox.classList.remove('hidden');
+        }
+        function clearStatus() {
+            statusBox.classList.add('hidden');
+            statusBox.textContent = '';
+        }
+
+        if (clientMac === '00:00:00:00:00:00') {
+            document.querySelectorAll('button[data-amount]').forEach(b => {
+                b.disabled = true;
+                b.textContent = 'Reconnect WiFi';
+            });
+            showStatus('Could not detect your device MAC. Please reconnect to WiFi and try again.', 'error');
+        }
+
+        function normalizePhone(raw) {
+            const digits = raw.replace(/[^\d]/g, '');
+            if (/^0[17]\d{8}$/.test(digits))   return '254' + digits.slice(1);
+            if (/^254[17]\d{8}$/.test(digits)) return digits;
+            if (/^[17]\d{8}$/.test(digits))    return '254' + digits;
+            return null;
+        }
+        phoneInput.addEventListener('input', () => {
+            phoneError.classList.add('hidden');
+            clearStatus();
+        });
+
+        window.pay = async function (amount, btn) {
+            clearStatus();
+            const normalized = normalizePhone(phoneInput.value.trim());
+            if (!normalized) {
+                phoneError.textContent = 'Enter a valid Safaricom number (e.g. 0712345678).';
+                phoneError.classList.remove('hidden');
+                phoneInput.focus();
+                return;
+            }
+
+            const allButtons = document.querySelectorAll('button[data-amount]');
+            const originalLabel = btn.textContent;
+            allButtons.forEach(b => b.disabled = true);
+            btn.textContent = 'Sending…';
+
+            try {
+                const res = await fetch(BACKEND, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        phone: normalized,
+                        amount,
+                        mac: clientMac,
+                        router_ip: routerIp
+                    })
+                });
+                let data = null;
+                try { data = await res.json(); } catch (_) {}
+                if (!res.ok || (data && data.error)) {
+                    showStatus((data && data.error) || `Request failed (HTTP ${res.status}). Please try again.`, 'error');
+                } else {
+                    showStatus('STK Push sent! Enter your M-Pesa PIN to gain access.', 'success');
+                }
+            } catch (e) {
+                showStatus('Connection error. Check your network and try again.', 'error');
+            } finally {
+                allButtons.forEach(b => b.disabled = false);
+                btn.textContent = originalLabel;
+            }
+        };
+    })();
+    </script>
+</body>
+</html>
+HTMLEOF

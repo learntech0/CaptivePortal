@@ -12,18 +12,14 @@ type AckRequest struct {
 
 func HandleAck(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	if r.Method != http.MethodPost {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Validate Router Token
 	secret := os.Getenv("LOCAL_CONTROLLER_SECRET")
-	if secret == "" {
-		secret = "dKadWiF6iF5LRQiRBTiSefVwrOZwKw1MojQsWvuwi4q8iym3URREM7U4MiC8ulYw" 
-	}
-	if r.Header.Get("X-Router-Token") != secret {
+	if secret == "" || r.Header.Get("X-Router-Token") != secret {
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -34,8 +30,8 @@ func HandleAck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove from Redis safely
 	AcknowledgeDevices(req.Macs)
+	logf("ack: acked %d macs", len(req.Macs))
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"acked"}`))
