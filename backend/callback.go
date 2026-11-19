@@ -3,6 +3,7 @@ package backend
 import (
 	"encoding/json"
 	"net/http"
+	"strconv" // ADDED: needed to convert duration string to int
 	"strings"
 	"time"
 )
@@ -37,14 +38,27 @@ func HandleCallback(w http.ResponseWriter, r *http.Request) {
 		if len(parts) != 2 {
 			logf("callback: malformed AccountReference=%q checkout=%s", refData, cb.Body.StkCallback.CheckoutRequestID)
 		} else if mac := macFromHex(parts[0]); mac != "" {
-			durationMinutes := parts[1]
+			
+			// FIXED: Convert the duration string to an integer
+			durationInt, err := strconv.Atoi(parts[1])
+			if err != nil {
+				logf("callback: bad duration=%q checkout=%s", parts[1], cb.Body.StkCallback.CheckoutRequestID)
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"Result":"Success"}`))
+				return
+			}
 
 			InitRedis()
 			key := "processed:" + cb.Body.StkCallback.CheckoutRequestID
 			wasSet, _ := rdb.SetNX(ctx, key, "1", 24*time.Hour).Result()
 			if wasSet {
-				AddPaidDevice(mac, durationMinutes)
-				logf("callback: paid mac=%s duration=%s checkout=%s", mac, durationMinutes, cb.Body.StkCallback.CheckoutRequestID)
+				// FIXED: GrantAccess now correctly receives the integer
+				err := GrantAccess(mac, durationInt)
+				if err != nil {
+					logf("callback: GrantAccess failed mac=%s err=%v", mac, err)
+				} else {
+					logf("callback: granted mac=%s duration=%d min", mac, durationInt)
+				}
 			} else {
 				logf("callback: duplicate checkout=%s", cb.Body.StkCallback.CheckoutRequestID)
 			}
