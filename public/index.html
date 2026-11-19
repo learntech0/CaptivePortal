@@ -205,6 +205,7 @@
                     showStatus('STK Push sent! Enter your M-Pesa PIN to gain access.', 'success');
                 }
             } catch (e) {
+                console.log(e);
                 showStatus('Connection error. Check your network and try again.', 'error');
             } finally {
                 allButtons.forEach(b => b.disabled = false);
